@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -78,6 +79,12 @@ func resourceOAuthProvider() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"reuse_client_credentials": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				Description: "Whether to reuse existing client credentials if they exist.",
+			},
 		},
 	}
 }
@@ -85,6 +92,7 @@ func resourceOAuthProvider() *schema.Resource {
 func resourceOAuthProviderCreate(d *schema.ResourceData, m interface{}) error {
 	config := m.(*Config)
 	name := d.Get("name").(string)
+	reuse := d.Get("reuse_client_credentials").(bool)
 
 	payload := OAuthProviderRequest{
 		ClientId:                   d.Get("client_id").(string),
@@ -101,8 +109,18 @@ func resourceOAuthProviderCreate(d *schema.ResourceData, m interface{}) error {
 	}
 
 	addr := urlJoin(config.host, oauthProviderBasePath, name)
+	addrURL, err := url.Parse(addr)
+	if err != nil {
+		return fmt.Errorf("failed to parse base URL: %v", err)
+	}
 
-	req, err := http.NewRequest(http.MethodPut, addr, bytes.NewReader(body))
+	if reuse {
+		q := addrURL.Query()
+		q.Set("reuse_client_credentials", "true")
+		addrURL.RawQuery = q.Encode()
+	}
+
+	req, err := http.NewRequest(http.MethodPut, addrURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
